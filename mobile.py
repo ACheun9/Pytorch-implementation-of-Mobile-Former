@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from utils import MyDyRelu
 from torch.nn import init
 
 
@@ -36,9 +37,77 @@ class SeModule(nn.Module):
 
 
 class Mobile(nn.Module):
-    def __init__(self, ks, inp, hid, out, act, se, stride):
+    def __init__(self, ks, inp, hid, out, se, stride, dim=192, reduction=4, k=2):
         super(Mobile, self).__init__()
+        self.hid = hid
+        self.k = k
+        self.fc1 = nn.Linear(dim, dim // reduction)
+        self.relu = nn.ReLU(inplace=True)
+        self.fc2 = nn.Linear(dim // reduction, 2 * k * hid)
+        self.sigmoid = nn.Sigmoid()
+
+        self.register_buffer('lambdas', torch.Tensor([1.] * k + [0.5] * k).float())
+        self.register_buffer('init_v', torch.Tensor([1.] + [0.] * (2 * k - 1)).float())
         self.stride = stride
+        # self.se = DyReLUB(channels=out, k=1) if dyrelu else se
+        self.se = se
+
+        self.conv1 = nn.Conv2d(inp, hid, kernel_size=1, stride=1, padding=0, bias=False)
+        self.bn1 = nn.BatchNorm2d(hid)
+        self.act1 = MyDyRelu(2)
+
+        self.conv2 = nn.Conv2d(hid, hid, kernel_size=ks, stride=stride,
+                               padding=ks // 2, groups=hid, bias=False)
+        self.bn2 = nn.BatchNorm2d(hid)
+        self.act2 = MyDyRelu(2)
+
+        self.conv3 = nn.Conv2d(hid, out, kernel_size=1, stride=1, padding=0, bias=False)
+        self.bn3 = nn.BatchNorm2d(out)
+
+        self.shortcut = nn.Identity()
+        if stride == 1 and inp != out:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(inp, out, kernel_size=1, stride=1, padding=0, bias=False),
+                nn.BatchNorm2d(out),
+            )
+
+    def get_relu_coefs(self, z):
+        theta = z[:, 0, :]
+        # b d -> b d//4
+        theta = self.fc1(theta)
+        theta = self.relu(theta)
+        # b d//4 -> b 2*k
+        theta = self.fc2(theta)
+        theta = 2 * self.sigmoid(theta) - 1
+        # b 2*k
+        return theta
+
+    def forward(self, x, z):
+        theta = self.get_relu_coefs(z)
+        # b 2*k*c -> b c 2*k                                     2*k            2*k
+        relu_coefs = theta.view(-1, self.hid, 2 * self.k) * self.lambdas + self.init_v
+
+        out = self.bn1(self.conv1(x))
+        out_ = [out, relu_coefs]
+        out = self.act1(out_)
+
+        out = self.bn2(self.conv2(out))
+        out_ = [out, relu_coefs]
+        out = self.act2(out_)
+
+        out = self.bn3(self.conv3(out))
+        if self.se is not None:
+            out = self.se(out)
+        out = out + self.shortcut(x) if self.stride == 1 else out
+        return out
+
+
+class MobileV3(nn.Module):
+    def __init__(self, ks, inp, hid, out, act, se, stride):
+        super(MobileV3, self).__init__()
+
+        self.stride = stride
+        # self.se = DyReLUB(channels=out, k=1) if dyrelu else se
         self.se = se
 
         self.conv1 = nn.Conv2d(inp, hid, kernel_size=1, stride=1, padding=0, bias=False)
@@ -68,4 +137,3 @@ class Mobile(nn.Module):
             out = self.se(out)
         out = out + self.shortcut(x) if self.stride == 1 else out
         return out
-
