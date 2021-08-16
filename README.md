@@ -3,5 +3,7 @@ Simple implementation of  Mobile-Former on Pytorch, it is different from the pap
 
 
 Inference:
+
 https://github.com/xiaolai-sqlai/mobilenetv3
+
 https://github.com/lucidrains/vit-pytorch
