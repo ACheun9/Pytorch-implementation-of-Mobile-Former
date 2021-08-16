@@ -7,3 +7,5 @@ Inference:
 https://github.com/xiaolai-sqlai/mobilenetv3
 
 https://github.com/lucidrains/vit-pytorch
+
+https://github.com/Islanna/DynamicReLU
