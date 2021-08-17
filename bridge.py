@@ -12,7 +12,7 @@ class Mobile2Former(nn.Module):
         self.heads = heads
         self.to_q = nn.Linear(dim, inner_dim)
         self.attend = nn.Softmax(dim=-1)
-        self.scale = dim ** -0.5
+        self.scale = c ** -0.5
         self.to_out = nn.Sequential(
             nn.Linear(inner_dim, dim),
             nn.Dropout(dropout)
@@ -45,7 +45,7 @@ class Former2Mobile(nn.Module):
         self.to_k = nn.Linear(dim, inner_dim)
         self.to_v = nn.Linear(dim, inner_dim)
         self.attend = nn.Softmax(dim=-1)
-        self.scale = dim ** -0.5
+        self.scale = c ** -0.5
 
         self.to_out = nn.Sequential(
             nn.Linear(inner_dim, c),
@@ -58,11 +58,12 @@ class Former2Mobile(nn.Module):
         x_ = x.contiguous().view(b, h * w, c).repeat(1, 1, self.heads)
         x_ = x_.contiguous().view(b, self.heads, h * w, c)
         q = x_
+        # b h m c
         k = self.to_k(z).view(b, self.heads, m, c)
         v = self.to_v(z).view(b, self.heads, m, c)
-
+        # b h l m
         dots = einsum('b h l c, b h m c -> b h l m', q, k) * self.scale
-        # b h m l
+        # b h l m
         attn = self.attend(dots)
         out = einsum('b h l m, b h m c -> b h l c', attn, v)
         out = rearrange(out, 'b h l c -> b l (h c)')

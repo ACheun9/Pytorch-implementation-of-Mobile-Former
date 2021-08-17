@@ -70,6 +70,7 @@ class Mobile(nn.Module):
                 nn.Conv2d(inp, out, kernel_size=1, stride=1, padding=0, bias=False),
                 nn.BatchNorm2d(out),
             )
+        self.init_params()
 
     def get_relu_coefs(self, z):
         theta = z[:, 0, :]
@@ -81,6 +82,21 @@ class Mobile(nn.Module):
         theta = 2 * self.sigmoid(theta) - 1
         # b 2*k
         return theta
+
+    def init_params(self):
+        for m in self.modules():
+            # print(m)
+            if isinstance(m, nn.Conv2d):
+                init.kaiming_normal_(m.weight, mode='fan_out')
+                if m.bias is not None:
+                    init.constant_(m.bias, 0)
+            elif isinstance(m, nn.BatchNorm2d):
+                init.constant_(m.weight, 1)
+                init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Linear):
+                init.normal_(m.weight, std=0.001)
+                if m.bias is not None:
+                    init.constant_(m.bias, 0)
 
     def forward(self, x, z):
         theta = self.get_relu_coefs(z)
@@ -128,6 +144,21 @@ class MobileV3(nn.Module):
                 nn.Conv2d(inp, out, kernel_size=1, stride=1, padding=0, bias=False),
                 nn.BatchNorm2d(out),
             )
+        self.init_params()
+
+    def init_params(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                init.kaiming_normal_(m.weight, mode='fan_out')
+                if m.bias is not None:
+                    init.constant_(m.bias, 0)
+            elif isinstance(m, nn.BatchNorm2d):
+                init.constant_(m.weight, 1)
+                init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Linear):
+                init.normal_(m.weight, std=0.001)
+                if m.bias is not None:
+                    init.constant_(m.bias, 0)
 
     def forward(self, x):
         out = self.act1(self.bn1(self.conv1(x)))

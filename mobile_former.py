@@ -4,6 +4,7 @@ import torch.nn as nn
 from mobile import Mobile, SeModule, hswish, MobileV3
 from former import Former
 from bridge import Mobile2Former, Former2Mobile
+from torch.nn import init
 
 
 class MobileFormerBlock(nn.Module):
@@ -61,6 +62,22 @@ class Mobile_Former(nn.Module):
             hswish(),
             nn.Linear(1920, self.num_classes)
         )
+
+        self.init_params()
+
+    def init_params(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                init.kaiming_normal_(m.weight, mode='fan_out')
+                if m.bias is not None:
+                    init.constant_(m.bias, 0)
+            elif isinstance(m, nn.BatchNorm2d):
+                init.constant_(m.weight, 1)
+                init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Linear):
+                init.normal_(m.weight, std=0.001)
+                if m.bias is not None:
+                    init.constant_(m.bias, 0)
 
     def forward(self, x):
         b, _, _, _ = x.shape
