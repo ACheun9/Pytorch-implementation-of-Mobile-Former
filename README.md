@@ -1,5 +1,4 @@
-# -Simple-implementation-of-Mobile-Former
-Simple implementation of  Mobile-Former on Pytorch, it is different from the paper and may not be complete
+# Simple-implementation-of-Mobile-Former
 
 At present, only the model but no trained. There may be some bug in the code, and some details may be different from the original paper, if you are interested in this, welcome to discuss.
 
