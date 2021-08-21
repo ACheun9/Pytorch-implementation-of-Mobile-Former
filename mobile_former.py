@@ -1,7 +1,7 @@
 import time
 import torch
 import torch.nn as nn
-from mobile import Mobile, SeModule, hswish, MobileV3
+from mobile import Mobile, SeModule, hswish, MobileDownsample
 from former import Former
 from bridge import Mobile2Former, Former2Mobile
 from torch.nn import init
@@ -11,8 +11,9 @@ class MobileFormerBlock(nn.Module):
     def __init__(self, inp, exp, out, se=None, stride=1):
         super(MobileFormerBlock, self).__init__()
         if stride == 2:
-            print('down sample')
-        self.mobile = Mobile(3, inp, exp, out, se, stride)
+            self.mobile = MobileDownsample(3, inp, exp, out, se, stride)
+        else:
+            self.mobile = Mobile(3, inp, exp, out, se, stride)
         self.mobile2former = Mobile2Former(dim=192, heads=2, c=inp)
         self.former = Former(dim=192)
         self.former2mobile = Former2Mobile(dim=192, heads=2, c=out)
@@ -39,7 +40,13 @@ class Mobile_Former(nn.Module):
             nn.BatchNorm2d(16),
             hswish(),
         )
-        self.bneck = MobileV3(3, 16, 32, 16, nn.ReLU(inplace=True), None, 1)
+        self.bneck = nn.Sequential(
+            nn.Conv2d(16, 32, 3, stride=1, padding=1, groups=16),
+            hswish(),
+            nn.Conv2d(32, 16, kernel_size=1, stride=1),
+            nn.BatchNorm2d(16)
+        )
+
         # mobile-former
         self.block = nn.Sequential(
             MobileFormerBlock(16, 96, 24, SeModule(24), 2),

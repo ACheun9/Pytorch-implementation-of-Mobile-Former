@@ -68,7 +68,7 @@ class Attention(nn.Module):
 # inputs: n L C
 # output: n L C
 class Former(nn.Module):
-    def __init__(self, dim, depth=1, heads=2, dim_head=64, mlp_dim=384, dropout=0.3):
+    def __init__(self, dim, depth=1, heads=2, dim_head=32, mlp_dim=384, dropout=0.3):
         super(Former, self).__init__()
         self.layers = nn.ModuleList([])
         for _ in range(depth):

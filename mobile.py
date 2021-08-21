@@ -70,7 +70,6 @@ class Mobile(nn.Module):
                 nn.Conv2d(inp, out, kernel_size=1, stride=1, padding=0, bias=False),
                 nn.BatchNorm2d(out),
             )
-        self.init_params()
 
     def get_relu_coefs(self, z):
         theta = z[:, 0, :]
@@ -82,21 +81,6 @@ class Mobile(nn.Module):
         theta = 2 * self.sigmoid(theta) - 1
         # b 2*k
         return theta
-
-    def init_params(self):
-        for m in self.modules():
-            # print(m)
-            if isinstance(m, nn.Conv2d):
-                init.kaiming_normal_(m.weight, mode='fan_out')
-                if m.bias is not None:
-                    init.constant_(m.bias, 0)
-            elif isinstance(m, nn.BatchNorm2d):
-                init.constant_(m.weight, 1)
-                init.constant_(m.bias, 0)
-            elif isinstance(m, nn.Linear):
-                init.normal_(m.weight, std=0.001)
-                if m.bias is not None:
-                    init.constant_(m.bias, 0)
 
     def forward(self, x, z):
         theta = self.get_relu_coefs(z)
@@ -118,25 +102,38 @@ class Mobile(nn.Module):
         return out
 
 
-class MobileV3(nn.Module):
-    def __init__(self, ks, inp, hid, out, act, se, stride):
-        super(MobileV3, self).__init__()
-
+class MobileDownsample(nn.Module):
+    def __init__(self, ks, inp, hid, out, se, stride, dim=192, reduction=4, k=2):
+        super(MobileDownsample, self).__init__()
+        self.dim = dim
+        self.hid, self.out = hid, out
+        self.k = k
+        self.fc1 = nn.Linear(dim, dim // reduction)
+        self.relu = nn.ReLU(inplace=True)
+        self.fc2 = nn.Linear(dim // reduction, 2 * k * hid)
+        self.sigmoid = nn.Sigmoid()
+        self.register_buffer('lambdas', torch.Tensor([1.] * k + [0.5] * k).float())
+        self.register_buffer('init_v', torch.Tensor([1.] + [0.] * (2 * k - 1)).float())
         self.stride = stride
         # self.se = DyReLUB(channels=out, k=1) if dyrelu else se
         self.se = se
 
-        self.conv1 = nn.Conv2d(inp, hid, kernel_size=1, stride=1, padding=0, bias=False)
-        self.bn1 = nn.BatchNorm2d(hid)
-        self.act1 = act
+        self.dw_conv1 = nn.Conv2d(inp, hid, kernel_size=ks, stride=stride,
+                                  padding=ks // 2, groups=inp, bias=False)
+        self.dw_bn1 = nn.BatchNorm2d(hid)
+        self.dw_act1 = MyDyRelu(2)
 
-        self.conv2 = nn.Conv2d(hid, hid, kernel_size=ks, stride=stride,
-                               padding=ks // 2, groups=hid, bias=False)
-        self.bn2 = nn.BatchNorm2d(hid)
-        self.act2 = act
+        self.pw_conv1 = nn.Conv2d(hid, out, kernel_size=1, stride=1, padding=0, bias=False)
+        self.pw_bn1 = nn.BatchNorm2d(out)
+        self.pw_act1 = nn.ReLU()
 
-        self.conv3 = nn.Conv2d(hid, out, kernel_size=1, stride=1, padding=0, bias=False)
-        self.bn3 = nn.BatchNorm2d(out)
+        self.dw_conv2 = nn.Conv2d(out, hid, kernel_size=ks, stride=1,
+                                  padding=ks // 2, groups=out, bias=False)
+        self.dw_bn2 = nn.BatchNorm2d(hid)
+        self.dw_act2 = MyDyRelu(2)
+
+        self.pw_conv2 = nn.Conv2d(hid, out, kernel_size=1, stride=1, padding=0, bias=False)
+        self.pw_bn2 = nn.BatchNorm2d(out)
 
         self.shortcut = nn.Identity()
         if stride == 1 and inp != out:
@@ -144,26 +141,33 @@ class MobileV3(nn.Module):
                 nn.Conv2d(inp, out, kernel_size=1, stride=1, padding=0, bias=False),
                 nn.BatchNorm2d(out),
             )
-        self.init_params()
 
-    def init_params(self):
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                init.kaiming_normal_(m.weight, mode='fan_out')
-                if m.bias is not None:
-                    init.constant_(m.bias, 0)
-            elif isinstance(m, nn.BatchNorm2d):
-                init.constant_(m.weight, 1)
-                init.constant_(m.bias, 0)
-            elif isinstance(m, nn.Linear):
-                init.normal_(m.weight, std=0.001)
-                if m.bias is not None:
-                    init.constant_(m.bias, 0)
+    def get_relu_coefs(self, z):
+        theta = z[:, 0, :]
+        # b d -> b d//4
+        theta = self.fc1(theta)
+        theta = self.relu(theta)
+        # b d//4 -> b 2*k
+        theta = self.fc2(theta)
+        theta = 2 * self.sigmoid(theta) - 1
+        # b 2*k
+        return theta
 
-    def forward(self, x):
-        out = self.act1(self.bn1(self.conv1(x)))
-        out = self.act2(self.bn2(self.conv2(out)))
-        out = self.bn3(self.conv3(out))
+    def forward(self, x, z):
+        theta = self.get_relu_coefs(z)
+        # b 2*k*c -> b c 2*k                                     2*k            2*k
+        relu_coefs = theta.view(-1, self.hid, 2 * self.k) * self.lambdas + self.init_v
+
+        out = self.dw_bn1(self.dw_conv1(x))
+        out_ = [out, relu_coefs]
+        out = self.dw_act1(out_)
+        out = self.pw_act1(self.pw_bn1(self.pw_conv1(out)))
+
+        out = self.dw_bn2(self.dw_conv2(out))
+        out_ = [out, relu_coefs]
+        out = self.dw_act2(out_)
+        out = self.pw_bn2(self.pw_conv2(out))
+
         if self.se is not None:
             out = self.se(out)
         out = out + self.shortcut(x) if self.stride == 1 else out

@@ -6,6 +6,7 @@ import time
 import warnings
 
 import torch
+import numpy as np
 import torch.nn as nn
 import torch.nn.parallel
 import torch.backends.cudnn as cudnn
@@ -17,19 +18,21 @@ import torch.utils.data.distributed
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 
+from utils import cutmix, cutmix_criterion
 from mobile_former import Mobile_Former
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 parser.add_argument('--data', metavar='DIR',
                     help='path to dataset')
-
+parser.add_argument('--num_cls', default=1000, type=int,
+                    help='number of classes')
 parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
 parser.add_argument('--epochs', default=90, type=int, metavar='N',
                     help='number of total epochs to run')
 parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                     help='manual epoch number (useful on restarts)')
-parser.add_argument('-b', '--batch-size', default=256, type=int,
+parser.add_argument('--batch-size', default=256, type=int,
                     metavar='N',
                     help='mini-batch size (default: 256), this is the total '
                          'batch size of all GPUs on the current node when '
@@ -53,7 +56,7 @@ parser.add_argument('--world-size', default=-1, type=int,
                     help='number of nodes for distributed training')
 parser.add_argument('--rank', default=-1, type=int,
                     help='node rank for distributed training')
-parser.add_argument('--dist-url', default='tcp://224.66.41.62:23456', type=str,
+parser.add_argument('--dist-url', default='tcp://224.66.41.62:55554', type=str,
                     help='url used to set up distributed training')
 parser.add_argument('--dist-backend', default='nccl', type=str,
                     help='distributed backend')
@@ -66,6 +69,11 @@ parser.add_argument('--multiprocessing-distributed', action='store_true',
                          'N processes per node, which has N GPUs. This is the '
                          'fastest way to use PyTorch for either single node or '
                          'multi node data parallel training')
+parser.add_argument('--cutmix', action='store_true',
+                    help='Use cutmix data augument')
+parser.add_argument('--cutmix-prob', default=0.5, type=float,
+                    help='cutmix probility')
+parser.add_argument('--beta', default=1.0, type=float)
 
 best_acc1 = 0
 
@@ -93,10 +101,12 @@ def main():
     args.distributed = args.world_size > 1 or args.multiprocessing_distributed
 
     ngpus_per_node = torch.cuda.device_count()
+    print('n_per_node:', ngpus_per_node)
     if args.multiprocessing_distributed:
         # Since we have ngpus_per_node processes per node, the total world_size
         # needs to be adjusted accordingly
         args.world_size = ngpus_per_node * args.world_size
+        print('world_size:', args.world_size)
         # Use torch.multiprocessing.spawn to launch distributed processes: the
         # main_worker process function
         mp.spawn(main_worker, nprocs=ngpus_per_node, args=(ngpus_per_node, args))
@@ -107,6 +117,7 @@ def main():
 
 def main_worker(gpu, ngpus_per_node, args):
     global best_acc1
+    print('gpu', gpu)
     args.gpu = gpu
 
     if args.gpu is not None:
@@ -119,14 +130,20 @@ def main_worker(gpu, ngpus_per_node, args):
             # For multiprocessing distributed training, rank needs to be the
             # global rank among all the processes
             args.rank = args.rank * ngpus_per_node + gpu
+            print('rank:', args.rank)
+        print('init ...', args.dist_url)
         dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
                                 world_size=args.world_size, rank=args.rank)
+
     # create model
-    model = Mobile_Former(1000)
+    print('create model ...')
+    model = Mobile_Former(args.num_cls)
 
     if not torch.cuda.is_available():
         print('using CPU, this will be slow')
     elif args.distributed:
+        print('ddp mode')
+        model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
         # For multiprocessing distributed, DistributedDataParallel constructor
         # should always set the single device scope, otherwise,
         # DistributedDataParallel will use all available devices.
@@ -188,7 +205,7 @@ def main_worker(gpu, ngpus_per_node, args):
 
     # Data loading code
     traindir = os.path.join(args.data, 'train')
-    valdir = os.path.join(args.data, 'val')
+    valdir = os.path.join(args.data, 'valid')
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
 
@@ -243,7 +260,7 @@ def main_worker(gpu, ngpus_per_node, args):
                                                     and args.rank % ngpus_per_node == 0):
             save_checkpoint({
                 'epoch': epoch + 1,
-                #'arch': args.arch,
+                # 'arch': args.arch,
                 'state_dict': model.state_dict(),
                 'best_acc1': best_acc1,
                 'optimizer': optimizer.state_dict(),
@@ -274,9 +291,14 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
         if torch.cuda.is_available():
             target = target.cuda(args.gpu, non_blocking=True)
 
-        # compute output
-        output = model(images)
-        loss = criterion(output, target)
+        if args.cutmix and np.random.rand(1) < args.cutmix_prob:
+            images, target_a, target_b, lam = cutmix(images, target, args.beta)
+            output = model(images)
+            loss = cutmix_criterion(criterion, output, target_a, target_b, lam)
+        else:
+            # compute output
+            output = model(images)
+            loss = criterion(output, target)
 
         # measure accuracy and record loss
         acc1, acc5 = accuracy(output, target, topk=(1, 5))
@@ -393,6 +415,7 @@ class ProgressMeter(object):
 def adjust_learning_rate(optimizer, epoch, args):
     """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
     lr = args.lr * (0.1 ** (epoch // 30))
+    print('lr', lr)
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
 
