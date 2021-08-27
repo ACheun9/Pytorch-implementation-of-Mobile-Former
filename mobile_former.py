@@ -8,15 +8,15 @@ from torch.nn import init
 
 
 class MobileFormerBlock(nn.Module):
-    def __init__(self, inp, exp, out, se=None, stride=1):
+    def __init__(self, inp, exp, out, se=None, stride=1, heads=2):
         super(MobileFormerBlock, self).__init__()
         if stride == 2:
             self.mobile = MobileDownsample(3, inp, exp, out, se, stride)
         else:
             self.mobile = Mobile(3, inp, exp, out, se, stride)
-        self.mobile2former = Mobile2Former(dim=192, heads=2, c=inp)
+        self.mobile2former = Mobile2Former(dim=192, heads=heads, c=inp)
         self.former = Former(dim=192)
-        self.former2mobile = Former2Mobile(dim=192, heads=2, c=out)
+        self.former2mobile = Former2Mobile(dim=192, heads=heads, c=out)
 
     def forward(self, inputs):
         x, z = inputs
@@ -57,9 +57,9 @@ class Mobile_Former(nn.Module):
             MobileFormerBlock(96, 384, 96, SeModule(96), 1),
             MobileFormerBlock(96, 576, 128, SeModule(128), 1),
             MobileFormerBlock(128, 768, 128, SeModule(128), 1),
-            MobileFormerBlock(128, 768, 192, SeModule(192), 2),
-            MobileFormerBlock(192, 1152, 192, SeModule(192), 1),
-            MobileFormerBlock(192, 1152, 192, SeModule(192), 1),
+            MobileFormerBlock(128, 768, 192, SeModule(192), 2, heads=1),
+            MobileFormerBlock(192, 1152, 192, SeModule(192), 1, heads=1),
+            MobileFormerBlock(192, 1152, 192, SeModule(192), 1, heads=1),
         )
         self.conv = nn.Conv2d(192, 1152, kernel_size=1, stride=1, padding=0, bias=False)
         self.bn = nn.BatchNorm2d(1152)

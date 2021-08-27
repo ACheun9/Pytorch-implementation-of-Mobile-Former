@@ -18,19 +18,30 @@ class Mobile2Former(nn.Module):
             nn.Dropout(dropout)
         )
 
+    # def forward(self, x, z):
+    #     b, m, d = z.shape
+    #     b, c, h, w = x.shape
+    #     # b l c -> b l h*c -> b h l c
+    #     x = x.contiguous().view(b, h * w, c).repeat(1, 1, self.heads)
+    #     x = x.contiguous().view(b, self.heads, h * w, c)
+    #     k, v = x, x
+    #     # b m d -> b m h*c -> b h m c
+    #     q = self.to_q(z).view(b, self.heads, m, c)
+    #     dots = einsum('b h m c, b h l c -> b h m l', q, k) * self.scale
+    #     # b h m l
+    #     attn = self.attend(dots)
+    #     out = einsum('b h m l, b h l c -> b h m c', attn, v)
+    #     out = rearrange(out, 'b h m c -> b m (h c)')
+    #     return z + self.to_out(out)
+
     def forward(self, x, z):
         b, m, d = z.shape
         b, c, h, w = x.shape
-        # b l c -> b l h*c -> b h l c
-        x = x.contiguous().view(b, h * w, c).repeat(1, 1, self.heads)
-        x = x.contiguous().view(b, self.heads, h * w, c)
-        k, v = x, x
-        # b m d -> b m h*c -> b h m c
+        x = x.contiguous().view(b, h * w, c).unsqueeze(1)
         q = self.to_q(z).view(b, self.heads, m, c)
-        dots = einsum('b h m c, b h l c -> b h m l', q, k) * self.scale
-        # b h m l
+        dots = q @ x.transpose(2, 3) * self.scale
         attn = self.attend(dots)
-        out = einsum('b h m l, b h l c -> b h m c', attn, v)
+        out = attn @ x
         out = rearrange(out, 'b h m c -> b m (h c)')
         return z + self.to_out(out)
 
@@ -52,20 +63,33 @@ class Former2Mobile(nn.Module):
             nn.Dropout(dropout)
         )
 
+    # def forward(self, x, z):
+    #     b, m, d = z.shape
+    #     b, c, h, w = x.shape
+    #     x_ = x.contiguous().view(b, h * w, c).repeat(1, 1, self.heads)
+    #     x_ = x_.contiguous().view(b, self.heads, h * w, c)
+    #     q = x_
+    #     # b h m c
+    #     k = self.to_k(z).view(b, self.heads, m, c)
+    #     v = self.to_v(z).view(b, self.heads, m, c)
+    #     # b h l m
+    #     dots = einsum('b h l c, b h m c -> b h l m', q, k) * self.scale
+    #     # b h l m
+    #     attn = self.attend(dots)
+    #     out = einsum('b h l m, b h m c -> b h l c', attn, v)
+    #     out = rearrange(out, 'b h l c -> b l (h c)')
+    #     out = self.to_out(out)
+    #     out = out.view(b, c, h, w)
+    #     return x + out
     def forward(self, x, z):
         b, m, d = z.shape
         b, c, h, w = x.shape
-        x_ = x.contiguous().view(b, h * w, c).repeat(1, 1, self.heads)
-        x_ = x_.contiguous().view(b, self.heads, h * w, c)
-        q = x_
-        # b h m c
+        q = x.contiguous().view(b, h * w, c).unsqueeze(1)
         k = self.to_k(z).view(b, self.heads, m, c)
         v = self.to_v(z).view(b, self.heads, m, c)
-        # b h l m
-        dots = einsum('b h l c, b h m c -> b h l m', q, k) * self.scale
-        # b h l m
+        dots = q @ k.transpose(2, 3) * self.scale
         attn = self.attend(dots)
-        out = einsum('b h l m, b h m c -> b h l c', attn, v)
+        out = attn @ v
         out = rearrange(out, 'b h l c -> b l (h c)')
         out = self.to_out(out)
         out = out.view(b, c, h, w)
