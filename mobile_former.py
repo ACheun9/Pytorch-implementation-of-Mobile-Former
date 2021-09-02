@@ -1,22 +1,23 @@
 import time
 import torch
 import torch.nn as nn
-from mobile import Mobile, SeModule, hswish, MobileDownsample
+from mobile import Mobile, hswish, MobileDown
 from former import Former
 from bridge import Mobile2Former, Former2Mobile
 from torch.nn import init
+from config import config_294, config_508, config_52
 
 
-class MobileFormerBlock(nn.Module):
-    def __init__(self, inp, exp, out, se=None, stride=1, heads=2):
-        super(MobileFormerBlock, self).__init__()
+class BaseBlock(nn.Module):
+    def __init__(self, inp, exp, out, se, stride, heads, dim):
+        super(BaseBlock, self).__init__()
         if stride == 2:
-            self.mobile = MobileDownsample(3, inp, exp, out, se, stride)
+            self.mobile = MobileDown(3, inp, exp, out, se, stride, dim)
         else:
-            self.mobile = Mobile(3, inp, exp, out, se, stride)
-        self.mobile2former = Mobile2Former(dim=192, heads=heads, c=inp)
-        self.former = Former(dim=192)
-        self.former2mobile = Former2Mobile(dim=192, heads=heads, c=out)
+            self.mobile = Mobile(3, inp, exp, out, se, stride, dim)
+        self.mobile2former = Mobile2Former(dim=dim, heads=heads, channel=inp)
+        self.former = Former(dim=dim)
+        self.former2mobile = Former2Mobile(dim=dim, heads=heads, channel=out)
 
     def forward(self, inputs):
         x, z = inputs
@@ -27,49 +28,38 @@ class MobileFormerBlock(nn.Module):
         return [x_out, z_out]
 
 
-class Mobile_Former(nn.Module):
-    def __init__(self, num_classes=1000, dyrelu=False):
-        super(Mobile_Former, self).__init__()
-
-        self.num_classes = num_classes
-        self.token = nn.Parameter(nn.Parameter(torch.randn(1, 6, 192)))
-
+class MobileFormer(nn.Module):
+    def __init__(self, cfg):
+        super(MobileFormer, self).__init__()
+        self.token = nn.Parameter(nn.Parameter(torch.randn(1, cfg['token'], cfg['embed'])))
         # stem 3 224 224 -> 16 112 112
         self.stem = nn.Sequential(
-            nn.Conv2d(3, 16, kernel_size=3, stride=2, padding=1, bias=False),
-            nn.BatchNorm2d(16),
+            nn.Conv2d(3, cfg['stem'], kernel_size=3, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(cfg['stem']),
             hswish(),
         )
+        # bneck
         self.bneck = nn.Sequential(
-            nn.Conv2d(16, 32, 3, stride=1, padding=1, groups=16),
+            nn.Conv2d(cfg['stem'], cfg['bneck']['e'], 3, stride=cfg['bneck']['s'], padding=1, groups=cfg['stem']),
             hswish(),
-            nn.Conv2d(32, 16, kernel_size=1, stride=1),
-            nn.BatchNorm2d(16)
+            nn.Conv2d(cfg['bneck']['e'], cfg['bneck']['o'], kernel_size=1, stride=1),
+            nn.BatchNorm2d(cfg['bneck']['o'])
         )
 
-        # mobile-former
-        self.block = nn.Sequential(
-            MobileFormerBlock(16, 96, 24, SeModule(24), 2),
-            MobileFormerBlock(24, 96, 24, None, 1),
-            MobileFormerBlock(24, 144, 48, None, 2),
-            MobileFormerBlock(48, 192, 48, SeModule(48), 1),
-            MobileFormerBlock(48, 288, 96, SeModule(96), 2),
-            MobileFormerBlock(96, 384, 96, SeModule(96), 1),
-            MobileFormerBlock(96, 576, 128, SeModule(128), 1),
-            MobileFormerBlock(128, 768, 128, SeModule(128), 1),
-            MobileFormerBlock(128, 768, 192, SeModule(192), 2, heads=1),
-            MobileFormerBlock(192, 1152, 192, SeModule(192), 1, heads=1),
-            MobileFormerBlock(192, 1152, 192, SeModule(192), 1, heads=1),
-        )
-        self.conv = nn.Conv2d(192, 1152, kernel_size=1, stride=1, padding=0, bias=False)
-        self.bn = nn.BatchNorm2d(1152)
+        # body
+        self.block = nn.ModuleList()
+        for kwargs in cfg['body']:
+            self.block.append(BaseBlock(**kwargs, dim=cfg['embed']))
+        inp = cfg['body'][-1]['out']
+        exp = cfg['body'][-1]['exp']
+        self.conv = nn.Conv2d(inp, exp, kernel_size=1, stride=1, padding=0, bias=False)
+        self.bn = nn.BatchNorm2d(exp)
         self.avg = nn.AvgPool2d((7, 7))
         self.head = nn.Sequential(
-            nn.Linear(1152 + 192, 1920),
+            nn.Linear(exp + cfg['embed'], cfg['fc1']),
             hswish(),
-            nn.Linear(1920, self.num_classes)
+            nn.Linear(cfg['fc1'], cfg['fc2'])
         )
-
         self.init_params()
 
     def init_params(self):
@@ -90,7 +80,9 @@ class Mobile_Former(nn.Module):
         b, _, _, _ = x.shape
         z = self.token.repeat(b, 1, 1)
         x = self.bneck(self.stem(x))
-        x, z = self.block([x, z])
+        for m in self.block:
+            x, z = m([x, z])
+        # x, z = self.block([x, z])
         x = self.avg(self.bn(self.conv(x))).view(b, -1)
         z = z[:, 0, :].view(b, -1)
         out = torch.cat((x, z), -1)
@@ -99,7 +91,7 @@ class Mobile_Former(nn.Module):
 
 
 if __name__ == "__main__":
-    model = Mobile_Former(num_classes=1000, dyrelu=True)
+    model = MobileFormer(config_52)
     inputs = torch.randn((3, 3, 224, 224))
     print(inputs.shape)
     # for i in range(100):

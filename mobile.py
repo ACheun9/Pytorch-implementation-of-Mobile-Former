@@ -37,7 +37,7 @@ class SeModule(nn.Module):
 
 
 class Mobile(nn.Module):
-    def __init__(self, ks, inp, hid, out, se, stride, dim=192, reduction=4, k=2):
+    def __init__(self, ks, inp, hid, out, se, stride, dim, reduction=4, k=2):
         super(Mobile, self).__init__()
         self.hid = hid
         self.k = k
@@ -102,9 +102,9 @@ class Mobile(nn.Module):
         return out
 
 
-class MobileDownsample(nn.Module):
-    def __init__(self, ks, inp, hid, out, se, stride, dim=192, reduction=4, k=2):
-        super(MobileDownsample, self).__init__()
+class MobileDown(nn.Module):
+    def __init__(self, ks, inp, hid, out, se, stride, dim, reduction=4, k=2):
+        super(MobileDown, self).__init__()
         self.dim = dim
         self.hid, self.out = hid, out
         self.k = k
@@ -123,12 +123,12 @@ class MobileDownsample(nn.Module):
         self.dw_bn1 = nn.BatchNorm2d(hid)
         self.dw_act1 = MyDyRelu(2)
 
-        self.pw_conv1 = nn.Conv2d(hid, out, kernel_size=1, stride=1, padding=0, bias=False)
-        self.pw_bn1 = nn.BatchNorm2d(out)
+        self.pw_conv1 = nn.Conv2d(hid, inp, kernel_size=1, stride=1, padding=0, bias=False)
+        self.pw_bn1 = nn.BatchNorm2d(inp)
         self.pw_act1 = nn.ReLU()
 
-        self.dw_conv2 = nn.Conv2d(out, hid, kernel_size=ks, stride=1,
-                                  padding=ks // 2, groups=out, bias=False)
+        self.dw_conv2 = nn.Conv2d(inp, hid, kernel_size=ks, stride=1,
+                                  padding=ks // 2, groups=inp, bias=False)
         self.dw_bn2 = nn.BatchNorm2d(hid)
         self.dw_act2 = MyDyRelu(2)
 
