@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from utils import MyDyRelu
+from utils.utils import MyDyRelu
 from torch.nn import init
 
 
