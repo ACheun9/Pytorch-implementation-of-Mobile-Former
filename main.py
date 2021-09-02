@@ -18,10 +18,13 @@ import torch.utils.data.distributed
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 
-from utils import cutmix, cutmix_criterion
-from mobile_former import Mobile_Former
+from utils.utils import cutmix, cutmix_criterion
+from utils.config import config
+from model import MobileFormer
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
+parser.add_argument('--name', default='mf294', type=str,
+                    help='model name')
 parser.add_argument('--data', metavar='DIR',
                     help='path to dataset')
 parser.add_argument('--num_cls', default=1000, type=int,
@@ -136,8 +139,10 @@ def main_worker(gpu, ngpus_per_node, args):
                                 world_size=args.world_size, rank=args.rank)
 
     # create model
-    print('create model ...')
-    model = Mobile_Former(args.num_cls)
+    assert args.name in ['mf52', 'mf294', 'mf508']
+    print('create model {}'.format(args.name))
+    cfg = config[args.name]
+    model = MobileFormer(cfg)
 
     if not torch.cuda.is_available():
         print('using CPU, this will be slow')
