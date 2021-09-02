@@ -78,3 +78,9 @@ config_508 = {
     'fc2': 1000  # num_clasess
     ,
 }
+
+config = {
+    'mf52': config_52,
+    'mf294': config_294,
+    'mf508': config_508
+}
