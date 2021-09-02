@@ -8,7 +8,7 @@ There are tow way for qkv aline in new code，A: Split token dim into heads; B: 
 
 Add: Make model by config(mf52, mf294, mf508) in config.py, the number of parameters almost same with paper
 
-Train：
+Train：\n
 python main.py --name mf294 --data path/to/ImageNet --dist-url 'tcp://127.0.0.1:12345' --dist-backend 'nccl' --multiprocessing-distributed --world-size 1 --rank 0 --batch-size 256 
 
 Inference:
