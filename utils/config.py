@@ -43,9 +43,9 @@ config_294 = {
         {'inp': 96, 'exp': 576, 'out': 128, 'se': None, 'stride': 1, 'heads': 2},
         {'inp': 128, 'exp': 768, 'out': 128, 'se': None, 'stride': 1, 'heads': 2},
         # stage5
-        {'inp': 128, 'exp': 768, 'out': 192, 'se': None, 'stride': 2, 'heads': 1},
-        {'inp': 192, 'exp': 1152, 'out': 192, 'se': None, 'stride': 1, 'heads': 1},
-        {'inp': 192, 'exp': 1152, 'out': 192, 'se': None, 'stride': 1, 'heads': 1},
+        {'inp': 128, 'exp': 768, 'out': 192, 'se': None, 'stride': 2, 'heads': 2},
+        {'inp': 192, 'exp': 1152, 'out': 192, 'se': None, 'stride': 1, 'heads': 2},
+        {'inp': 192, 'exp': 1152, 'out': 192, 'se': None, 'stride': 1, 'heads': 2},
     ],
     'fc1': 1920,  # hid_layer
     'fc2': 1000  # num_clasess
@@ -70,9 +70,9 @@ config_508 = {
         {'inp': 128, 'exp': 768, 'out': 176, 'se': None, 'stride': 1, 'heads': 2},
         {'inp': 176, 'exp': 1056, 'out': 176, 'se': None, 'stride': 1, 'heads': 2},
 
-        {'inp': 176, 'exp': 1056, 'out': 240, 'se': None, 'stride': 2, 'heads': 1},
-        {'inp': 240, 'exp': 1440, 'out': 240, 'se': None, 'stride': 1, 'heads': 1},
-        {'inp': 240, 'exp': 1440, 'out': 240, 'se': None, 'stride': 1, 'heads': 1},
+        {'inp': 176, 'exp': 1056, 'out': 240, 'se': None, 'stride': 2, 'heads': 2},
+        {'inp': 240, 'exp': 1440, 'out': 240, 'se': None, 'stride': 1, 'heads': 2},
+        {'inp': 240, 'exp': 1440, 'out': 240, 'se': None, 'stride': 1, 'heads': 2},
     ],
     'fc1': 1920,  # hid_layer
     'fc2': 1000  # num_clasess
