@@ -4,7 +4,7 @@ At present, only the model but no trained. There may be some bug in the code, an
 
 Add: CutUp,MixUp,RandomErasing,SyncBatchNorm for DDP train
 
-There are tow way for qkv aline in new code，A: Split token dim into heads; B: Broadcast x while product
+There are tow way for qkv aline in new code，A: Split token dim into heads(N); B: Broadcast x while product(Y)
 
 Add: Make model by config(mf52, mf294, mf508) in config.py, the number of parameters almost same with paper
 
