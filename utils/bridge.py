@@ -21,7 +21,7 @@ class Mobile2Former(nn.Module):
     def forward(self, x, z):
         b, m, d = z.shape
         b, c, h, w = x.shape
-        x = x.contiguous().view(b, h * w, c).unsqueeze(1)
+        x =  x.reshape(b, c, h*w).transpose(1,2).unsqueeze(1)
         q = self.to_q(z).view(b, self.heads, m, c)
         dots = q @ x.transpose(2, 3) * self.scale
         attn = self.attend(dots)
@@ -50,7 +50,7 @@ class Former2Mobile(nn.Module):
     def forward(self, x, z):
         b, m, d = z.shape
         b, c, h, w = x.shape
-        q = x.contiguous().view(b, h * w, c).unsqueeze(1)
+        q =  x.reshape(b, c, h*w).transpose(1,2).unsqueeze(1)
         k = self.to_k(z).view(b, self.heads, m, c)
         v = self.to_v(z).view(b, self.heads, m, c)
         dots = q @ k.transpose(2, 3) * self.scale
